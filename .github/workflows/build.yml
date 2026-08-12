@@ -38,9 +38,45 @@ jobs:
           python3 -m pip install --upgrade pip
           python3 -m pip install buildozer cython
 
+      - name: Prepare Android SDK
+        run: |
+          SDK="$HOME/.buildozer/android/platform/android-sdk"
+
+          mkdir -p "$SDK"
+
+          if [ -f "$SDK/cmdline-tools/latest/bin/sdkmanager" ]; then
+            SDKMANAGER="$SDK/cmdline-tools/latest/bin/sdkmanager"
+          elif [ -f "$SDK/tools/bin/sdkmanager" ]; then
+            SDKMANAGER="$SDK/tools/bin/sdkmanager"
+          else
+            SDKMANAGER=$(find "$SDK" -name sdkmanager -type f 2>/dev/null | head -n 1)
+          fi
+
+          if [ -z "$SDKMANAGER" ]; then
+            echo "sdkmanager belum tersedia. Buildozer akan menyiapkannya."
+            exit 0
+          fi
+
+          yes | "$SDKMANAGER" --licenses || true
+
+          "$SDKMANAGER" \
+            "platform-tools" \
+            "platforms;android-35" \
+            "build-tools;37.0.0"
+
+      - name: Accept Android SDK licenses
+        run: |
+          mkdir -p "$HOME/.buildozer/android/platform/android-sdk/licenses"
+
+          printf '%s\n' \
+          '8933bad161af4178b1185d1a37fbf41ea5269c55' \
+          'd56f5187479451eabf01fb78af6dfcb131a6481e' \
+          '24333f8a63b6825ea9c5514f83c2829b004d1fee' \
+          > "$HOME/.buildozer/android/platform/android-sdk/licenses/android-sdk-license"
+
       - name: Build APK
         run: |
-          buildozer android debug
+          yes | buildozer android debug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
