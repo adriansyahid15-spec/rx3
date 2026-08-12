@@ -14,7 +14,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install system dependencies
+      - name: Install dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -23,6 +23,7 @@ jobs:
             git \
             zip \
             unzip \
+            wget \
             openjdk-17-jdk \
             autoconf \
             automake \
@@ -33,50 +34,58 @@ jobs:
             libncursesw5-dev \
             cmake
 
+      - name: Install Android SDK
+        run: |
+          SDK="$HOME/android-sdk"
+          mkdir -p "$SDK/cmdline-tools"
+
+          wget -q \
+            https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip \
+            -O /tmp/cmdline-tools.zip
+
+          unzip -q /tmp/cmdline-tools.zip -d /tmp/android-tools
+
+          mkdir -p "$SDK/cmdline-tools/latest"
+
+          mv /tmp/android-tools/cmdline-tools/* \
+            "$SDK/cmdline-tools/latest/"
+
+          export ANDROID_HOME="$SDK"
+          export ANDROID_SDK_ROOT="$SDK"
+          export PATH="$SDK/cmdline-tools/latest/bin:$SDK/platform-tools:$PATH"
+
+          yes | sdkmanager --licenses || true
+
+          sdkmanager \
+            "platform-tools" \
+            "platforms;android-35" \
+            "build-tools;35.0.0"
+
       - name: Install Buildozer
         run: |
           python3 -m pip install --upgrade pip
           python3 -m pip install buildozer cython
 
-      - name: Prepare Android SDK
+      - name: Configure Buildozer
         run: |
-          SDK="$HOME/.buildozer/android/platform/android-sdk"
+          sed -i \
+            's|^#android.sdk_path =.*|android.sdk_path = /home/runner/android-sdk|' \
+            buildozer.spec
 
-          mkdir -p "$SDK"
+          sed -i \
+            's|^#android.accept_sdk_license =.*|android.accept_sdk_license = True|' \
+            buildozer.spec
 
-          if [ -f "$SDK/cmdline-tools/latest/bin/sdkmanager" ]; then
-            SDKMANAGER="$SDK/cmdline-tools/latest/bin/sdkmanager"
-          elif [ -f "$SDK/tools/bin/sdkmanager" ]; then
-            SDKMANAGER="$SDK/tools/bin/sdkmanager"
-          else
-            SDKMANAGER=$(find "$SDK" -name sdkmanager -type f 2>/dev/null | head -n 1)
-          fi
-
-          if [ -z "$SDKMANAGER" ]; then
-            echo "sdkmanager belum tersedia. Buildozer akan menyiapkannya."
-            exit 0
-          fi
-
-          yes | "$SDKMANAGER" --licenses || true
-
-          "$SDKMANAGER" \
-            "platform-tools" \
-            "platforms;android-35" \
-            "build-tools;37.0.0"
-
-      - name: Accept Android SDK licenses
-        run: |
-          mkdir -p "$HOME/.buildozer/android/platform/android-sdk/licenses"
-
-          printf '%s\n' \
-          '8933bad161af4178b1185d1a37fbf41ea5269c55' \
-          'd56f5187479451eabf01fb78af6dfcb131a6481e' \
-          '24333f8a63b6825ea9c5514f83c2829b004d1fee' \
-          > "$HOME/.buildozer/android/platform/android-sdk/licenses/android-sdk-license"
+          grep -E 'android.sdk_path|android.accept_sdk_license' buildozer.spec || true
 
       - name: Build APK
+        env:
+          ANDROID_HOME: /home/runner/android-sdk
+          ANDROID_SDK_ROOT: /home/runner/android-sdk
+          JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
+          PATH: /home/runner/android-sdk/cmdline-tools/latest/bin:/home/runner/android-sdk/platform-tools:${{ env.PATH }}
         run: |
-          yes | buildozer android debug
+          buildozer android debug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
